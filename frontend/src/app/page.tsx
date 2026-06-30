@@ -357,7 +357,8 @@ export default function Home() {
     fetch("http://localhost:8000/api/health")
       .then(res => res.json())
       .then(data => {
-        if (data.status === "healthy") {
+        // Only treat as healthy if both the API and DB are up
+        if (data.status === "healthy" && data.database === "connected") {
           setIsApiHealthy(true);
         } else {
           setIsApiHealthy(false);
@@ -444,7 +445,8 @@ export default function Home() {
 
       Promise.all([fetchForecasts, fetchAlerts, fetchPredictions])
         .catch(err => {
-          console.error("API error, falling back to mock:", err);
+          // API is unreachable or returned errors — silently fall back to mock data
+          console.warn("API unavailable, using mock data:", err);
           setForecastsList(generateMockForecastData(selectedVillage.region_type, language));
           setAlerts(MOCK_ALERTS.filter(alert => 
             alert.location.toLowerCase().includes(selectedVillage.name.toLowerCase()) ||
@@ -1233,37 +1235,162 @@ export default function Home() {
 
         {/* CENTER COLUMN: DIGITAL TWIN GLOBE/MAP VIEWPORT (5/12 cols) */}
         <section className="glass-panel rounded-2xl p-2 flex flex-col gap-2 lg:col-span-5 min-h-[380px] lg:min-h-0">
-          {/* Viewport Header */}
-          <div className="flex justify-between items-center px-2 py-1 border-b border-white/5 shrink-0 font-mono text-[10px] text-gray-400">
-            <div className="flex items-center gap-1.5">
+          {/* Viewport Header — richer HUD bar */}
+          <div className="flex justify-between items-center px-3 py-1.5 border-b border-electric-cyan/10 shrink-0 font-mono text-[10px]">
+            <div className="flex items-center gap-2">
               <MapIcon className="w-3.5 h-3.5 text-electric-cyan" />
-              <span>{t("mapTwin")}</span>
+              <span className="text-white font-semibold tracking-widest uppercase text-[9px]">{t("mapTwin")}</span>
+              <span className="px-1.5 py-0.5 bg-electric-cyan/10 border border-electric-cyan/25 rounded text-electric-cyan text-[8px] uppercase tracking-wider">LIVE</span>
             </div>
-            <div className="flex items-center gap-3">
-              <span>{t("coordinates")}: <span className="text-electric-cyan font-bold">{mouseCoords.lat.toFixed(4)}N, {mouseCoords.lon.toFixed(4)}E</span></span>
+            <div className="flex items-center gap-3 text-gray-400">
+              <div className="flex items-center gap-1.5">
+                <span className="text-gray-500 text-[8px] uppercase">{t("coordinates")}</span>
+                <span className="text-electric-cyan font-bold coord-ticker">
+                  {mouseCoords.lat.toFixed(4)}°N &nbsp;{mouseCoords.lon.toFixed(4)}°E
+                </span>
+              </div>
+              <div className="flex items-center gap-1 text-[8px]">
+                <span className="w-1.5 h-1.5 rounded-full bg-climate-green animate-pulse" />
+                <span className="text-climate-green">SAT OK</span>
+              </div>
             </div>
           </div>
 
           {/* Interactive Simulation Map Sandbox */}
-          <div className="flex-1 relative rounded-xl overflow-hidden bg-space-blue-dark border border-white/5">
+          <div className="flex-1 relative rounded-xl overflow-hidden bg-space-blue-dark border border-electric-cyan/10 map-scanline map-scan-beam map-vignette">
             {/* The MapLibre Container */}
             <div ref={mapContainerRef} className="absolute inset-0 w-full h-full z-0" />
 
-            {/* Scientific HUD Stats Overlay */}
-            <div className="absolute top-3 left-3 flex flex-col gap-1 font-mono text-[9px] text-gray-400 pointer-events-none bg-space-blue-dark/80 p-2 rounded border border-white/10 backdrop-blur z-10">
-              <div className="text-white font-semibold flex items-center gap-1">
-                <Sparkles className="w-3 h-3 text-electric-cyan" />
-                <span>ATMOSPHERE DATA STREAM</span>
+            {/* Corner bracket accents */}
+            <div className="map-corner-bracket tl" />
+            <div className="map-corner-bracket tr" />
+            <div className="map-corner-bracket bl" />
+            <div className="map-corner-bracket br" />
+
+            {/* Scientific HUD Stats Overlay — top left */}
+            <div className="absolute top-3 left-3 flex flex-col gap-1.5 font-mono text-[9px] pointer-events-none z-10">
+              <div
+                className="bg-space-blue-dark/85 backdrop-blur-md border border-electric-cyan/20 rounded-lg p-2.5 flex flex-col gap-1"
+                style={{ boxShadow: '0 0 20px rgba(0,229,255,0.06)' }}
+              >
+                <div className="flex items-center gap-1.5 text-white font-bold border-b border-white/10 pb-1 mb-0.5">
+                  <Sparkles className="w-3 h-3 text-electric-cyan" />
+                  <span className="tracking-widest text-[8px] uppercase">Atmosphere Stream</span>
+                  <span className="hud-blink text-electric-cyan ml-0.5">█</span>
+                </div>
+                <div className="flex justify-between gap-4 text-gray-400">
+                  <span>STORM</span>
+                  <span className="text-disaster-red font-bold">SEVERE</span>
+                </div>
+                <div className="flex justify-between gap-4 text-gray-400">
+                  <span>SAT</span>
+                  <span className="text-white">INSAT-3DR</span>
+                </div>
+                <div className="flex justify-between gap-4 text-gray-400">
+                  <span>CONF</span>
+                  <span className="text-climate-green">96.43%</span>
+                </div>
+                <div className="flex justify-between gap-4 text-gray-400">
+                  <span>FREQ</span>
+                  <span className="text-white">18.2 GHz</span>
+                </div>
               </div>
-              <div>STORM INDEX: <span className="text-disaster-red">SEVERE</span></div>
-              <div>SAT FREQ: INSAT-3DR [18.2 GHz]</div>
-              <div>GRID confidence: 96.43%</div>
+
+              {/* Risk badge for selected village */}
+              <div className={`backdrop-blur-md border rounded-lg px-2.5 py-1.5 flex items-center gap-1.5 ${
+                selectedVillage.region_type === 'high_landslide'
+                  ? 'bg-disaster-red/15 border-disaster-red/35'
+                  : selectedVillage.region_type === 'urban_heatwave'
+                    ? 'bg-warning-amber/15 border-warning-amber/35'
+                    : 'bg-climate-green/10 border-climate-green/25'
+              }`}>
+                <span className={`w-2 h-2 rounded-full animate-pulse ${
+                  selectedVillage.region_type === 'high_landslide' ? 'bg-disaster-red'
+                  : selectedVillage.region_type === 'urban_heatwave' ? 'bg-warning-amber'
+                  : 'bg-climate-green'
+                }`} />
+                <span className={`text-[8px] font-bold uppercase tracking-wide ${
+                  selectedVillage.region_type === 'high_landslide' ? 'text-disaster-red'
+                  : selectedVillage.region_type === 'urban_heatwave' ? 'text-warning-amber'
+                  : 'text-climate-green'
+                }`}>
+                  {selectedVillage.region_type === 'high_landslide' ? '⚠ HIGH RISK'
+                  : selectedVillage.region_type === 'urban_heatwave' ? '🔥 HEAT ALERT'
+                  : selectedVillage.region_type === 'mountain_cold' ? '❄ COLD ZONE'
+                  : selectedVillage.region_type === 'coastal_humid' ? '🌊 COASTAL'
+                  : '🌿 STABLE'}
+                </span>
+              </div>
             </div>
 
-            {/* India Simulation Details Toast */}
-            <div className="absolute bottom-3 right-3 flex items-center gap-2 pointer-events-none bg-space-blue-dark/80 px-2 py-1.5 rounded border border-white/10 backdrop-blur z-10 text-[9px] font-mono">
+            {/* Top right: selected village quick card */}
+            <div className="absolute top-3 right-3 z-10 pointer-events-none">
+              <div
+                className="bg-space-blue-dark/85 backdrop-blur-md border border-electric-cyan/20 rounded-lg px-3 py-2 flex flex-col gap-1 font-mono"
+                style={{ boxShadow: '0 0 20px rgba(0,229,255,0.06)', minWidth: '130px' }}
+              >
+                <div className="text-electric-cyan text-[9px] font-bold border-b border-white/10 pb-1 flex items-center gap-1">
+                  <span className="w-1.5 h-1.5 rounded-full bg-electric-cyan animate-ping" />
+                  {selectedVillage.name}
+                </div>
+                <div className="grid grid-cols-2 gap-x-3 gap-y-0.5 text-[9px]">
+                  <span className="text-gray-500">TEMP</span>
+                  <span className="text-white font-bold">{currentForecast.temp}°C</span>
+                  <span className="text-gray-500">RAIN</span>
+                  <span className="text-electric-cyan font-bold">{currentForecast.rain}mm</span>
+                  <span className="text-gray-500">AQI</span>
+                  <span className={`font-bold ${
+                    currentForecast.aqi > 150 ? 'text-disaster-red'
+                    : currentForecast.aqi > 100 ? 'text-warning-amber'
+                    : 'text-climate-green'
+                  }`}>{currentForecast.aqi}</span>
+                  <span className="text-gray-500">HUM</span>
+                  <span className="text-white font-bold">{currentForecast.humidity}%</span>
+                </div>
+              </div>
+            </div>
+
+            {/* Bottom center: Layer legend */}
+            <div className="absolute bottom-3 left-1/2 -translate-x-1/2 z-10 pointer-events-none">
+              <div className="bg-space-blue-dark/80 backdrop-blur-md border border-white/10 rounded-full px-3 py-1.5 flex items-center gap-3">
+                {activeLayers.temperature && (
+                  <div className="map-legend-item">
+                    <div className="map-legend-dot" style={{ background: 'linear-gradient(to right, #00e5ff, #ff4d4d)' }} />
+                    <span>Temp</span>
+                  </div>
+                )}
+                {activeLayers.rainfall && (
+                  <div className="map-legend-item">
+                    <div className="map-legend-dot" style={{ background: '#00e5ff' }} />
+                    <span>Rain</span>
+                  </div>
+                )}
+                {activeLayers.aqi && (
+                  <div className="map-legend-item">
+                    <div className="map-legend-dot" style={{ background: '#ff4d4d' }} />
+                    <span>AQI</span>
+                  </div>
+                )}
+                {activeLayers.disaster && (
+                  <div className="map-legend-item">
+                    <div className="map-legend-dot" style={{ background: 'transparent', border: '1.5px solid #ff4d4d' }} />
+                    <span>Risk</span>
+                  </div>
+                )}
+                <div className="w-px h-3 bg-white/10" />
+                <div className="map-legend-item">
+                  <span className="text-gray-500 text-[8px]">ZOOM</span>
+                  <span className="text-white text-[8px] font-bold">Scroll ⊕</span>
+                </div>
+              </div>
+            </div>
+
+            {/* Bottom right: Sim time badge */}
+            <div className="absolute bottom-3 right-3 flex items-center gap-2 pointer-events-none bg-space-blue-dark/85 px-2.5 py-1.5 rounded-lg border border-electric-cyan/15 backdrop-blur-md z-10 text-[9px] font-mono">
               <span className="w-1.5 h-1.5 rounded-full bg-electric-cyan animate-ping" />
-              <span className="text-white">SIM TIME: D+{timelineIndex} [{currentForecast.time}]</span>
+              <span className="text-gray-400 uppercase tracking-wider">SIM</span>
+              <span className="text-white font-bold">D+{timelineIndex}</span>
+              <span className="text-electric-cyan font-bold">[{currentForecast.time}]</span>
             </div>
           </div>
         </section>
@@ -1597,55 +1724,100 @@ export default function Home() {
       </main>
 
       {/* BOTTOM SECTION: TIMELINE SIMULATION ROADMAP CONTROL */}
-      <footer className="glass-panel border-t border-electric-cyan/20 px-6 py-4 flex flex-col md:flex-row items-center gap-4 z-10 shrink-0 select-none">
-        
-        {/* Playback Controls */}
-        <div className="flex items-center gap-3">
-          <button 
-            onClick={() => setIsPlaying(!isPlaying)}
-            className="p-2.5 bg-electric-cyan hover:bg-electric-cyan/85 border border-electric-cyan rounded-full text-space-blue-dark transition"
-            title={isPlaying ? "Pause Simulation" : "Start Timeline Playback"}
-          >
-            {isPlaying ? <Pause className="w-4 h-4 fill-space-blue-dark text-space-blue-dark" /> : <Play className="w-4 h-4 fill-space-blue-dark text-space-blue-dark ml-0.5" />}
-          </button>
-          
-          <div className="flex flex-col font-mono text-xs">
-            <span className="text-white font-bold leading-none">{t("playbackSpeed")}</span>
-            <span className="text-[10px] text-gray-400 mt-1 uppercase">Interval: Daily Playback</span>
-          </div>
-        </div>
-
-        {/* Timeline Slider */}
-        <div className="flex-1 flex items-center gap-3 w-full">
-          <span className="font-mono text-[10px] text-gray-400 uppercase">D-1</span>
-          
-          <div className="flex-1 relative flex items-center">
-            <input 
-              type="range" 
-              min="0" 
-              max="9" 
-              value={timelineIndex}
-              onChange={(e) => {
-                setTimelineIndex(parseInt(e.target.value));
-                setIsPlaying(false); // Stop autoplay when scrubbed manually
+      <footer className="glass-panel border-t border-electric-cyan/15 px-5 py-3 flex flex-col gap-3 z-10 shrink-0 select-none">
+        <div className="flex flex-col md:flex-row items-center gap-4">
+          {/* Playback Controls */}
+          <div className="flex items-center gap-3 shrink-0">
+            <button 
+              onClick={() => setIsPlaying(!isPlaying)}
+              className="relative p-2.5 rounded-full text-space-blue-dark transition group"
+              style={{
+                background: isPlaying
+                  ? 'linear-gradient(135deg, #ff4d4d, #ff8c00)'
+                  : 'linear-gradient(135deg, #00e5ff, #00d084)',
+                boxShadow: isPlaying
+                  ? '0 0 16px rgba(255,77,77,0.5)'
+                  : '0 0 16px rgba(0,229,255,0.5)'
               }}
-              className="w-full h-1.5 bg-space-blue-light border border-white/10 rounded-lg appearance-none cursor-pointer accent-electric-cyan focus:outline-none"
-            />
-            
-            {/* Tick indicators */}
-            <div className="absolute left-0 right-0 top-4 flex justify-between px-1 pointer-events-none font-mono text-[9px] text-gray-500">
-              {getForecastData().map((f, idx) => (
-                <span 
-                  key={idx} 
-                  className={`transition ${idx === timelineIndex ? "text-electric-cyan font-bold" : ""}`}
-                >
-                  {f.time}
-                </span>
-              ))}
+              title={isPlaying ? "Pause Simulation" : "Start Timeline Playback"}
+            >
+              {isPlaying
+                ? <Pause className="w-4 h-4 fill-current" />
+                : <Play className="w-4 h-4 fill-current ml-0.5" />
+              }
+            </button>
+
+            <div className="flex flex-col font-mono">
+              <div className="flex items-center gap-1.5">
+                <span className="text-white font-bold text-xs leading-none">{t("playbackSpeed")}</span>
+                {isPlaying && <span className="text-[8px] text-warning-amber font-bold uppercase animate-pulse">▶ PLAYING</span>}
+              </div>
+              <span className="text-[9px] text-gray-500 mt-0.5 uppercase tracking-wider">10-Day Forecast Simulation</span>
             </div>
           </div>
 
-          <span className="font-mono text-[10px] text-gray-400 uppercase">D+9</span>
+          {/* Timeline Slider + day cards */}
+          <div className="flex-1 flex flex-col gap-2 w-full">
+            {/* Day cards row */}
+            <div className="flex items-center gap-1">
+              {getForecastData().map((f, idx) => (
+                <button
+                  key={idx}
+                  onClick={() => { setTimelineIndex(idx); setIsPlaying(false); }}
+                  className={`flex-1 flex flex-col items-center py-1 px-0.5 rounded-lg border transition-all ${
+                    idx === timelineIndex
+                      ? 'bg-electric-cyan/20 border-electric-cyan/50 text-electric-cyan'
+                      : 'bg-white/3 border-white/5 text-gray-500 hover:bg-white/8 hover:text-gray-300'
+                  }`}
+                  style={{
+                    boxShadow: idx === timelineIndex ? '0 0 10px rgba(0,229,255,0.25)' : 'none'
+                  }}
+                >
+                  <span className="font-mono text-[8px] uppercase">{f.time}</span>
+                  <span className={`font-bold text-[9px] mt-0.5 ${
+                    idx === timelineIndex ? 'text-electric-cyan' : 'text-gray-400'
+                  }`}>{f.temp}°</span>
+                </button>
+              ))}
+            </div>
+
+            {/* Slider */}
+            <div className="flex items-center gap-2">
+              <span className="font-mono text-[9px] text-gray-500 uppercase w-6 text-right">D0</span>
+              <input 
+                type="range" 
+                min="0" 
+                max="9" 
+                value={timelineIndex}
+                onChange={(e) => {
+                  setTimelineIndex(parseInt(e.target.value));
+                  setIsPlaying(false);
+                }}
+                className="timeline-slider flex-1"
+              />
+              <span className="font-mono text-[9px] text-gray-500 uppercase w-6">D+9</span>
+            </div>
+          </div>
+
+          {/* Right side stats */}
+          <div className="shrink-0 flex flex-col gap-1 items-end font-mono text-[9px]">
+            <div className="flex items-center gap-1.5">
+              <span className="text-gray-500">TEMP NOW</span>
+              <span className="text-white font-bold">{currentForecast.temp}°C</span>
+            </div>
+            <div className="flex items-center gap-1.5">
+              <span className="text-gray-500">WIND</span>
+              <span className="text-electric-cyan font-bold">{currentForecast.windSpeed} km/h</span>
+            </div>
+            <div className="flex items-center gap-1.5">
+              <span className="text-gray-500">UV IDX</span>
+              <span className={`font-bold ${
+                currentForecast.uv >= 8 ? 'text-disaster-red'
+                : currentForecast.uv >= 5 ? 'text-warning-amber'
+                : 'text-climate-green'
+              }`}>{currentForecast.uv}</span>
+            </div>
+          </div>
         </div>
       </footer>
     </div>

@@ -55,12 +55,16 @@ def health_check():
     else:
         try:
             with engine.connect() as connection:
-                connection.execute("SELECT 1")
+                from sqlalchemy import text
+                connection.execute(text("SELECT 1"))
         except Exception as e:
             db_status = f"error: {str(e)}"
 
+    # Report degraded if DB is unavailable so the frontend falls back to mock data
+    overall_status = "healthy" if db_status == "connected" else "degraded"
+
     return {
-        "status": "healthy",
+        "status": overall_status,
         "project": settings.PROJECT_NAME,
         "environment": settings.ENVIRONMENT,
         "database": db_status
